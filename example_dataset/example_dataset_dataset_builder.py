@@ -1,10 +1,18 @@
 from typing import Iterator, Tuple, Any
 
+import os
 import glob
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_hub as hub
+
+
+"""
+The following 2 lines are added according to https://github.com/tensorflow/datasets/issues/2761, in order to fix the curl failure issue; they can be deleted if no error is reported.
+"""
+tfds.core.utils.gcs_utils._is_gcs_disabled = True
+os.environ['NO_GCE_CHECK'] = 'true'
 
 
 class ExampleDataset(tfds.core.GeneratorBasedBuilder):
