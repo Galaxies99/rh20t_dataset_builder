@@ -341,10 +341,13 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                     depth = np.expand_dims(depths[ts], -1).astype(np.uint16)
                 except Exception:
                     depth = np.zeros((height, width, 1), dtype=np.uint16)
-                tcp = convert_tcp(tcps[cam_sn][ts]['tcp'])
-                tcp_base = convert_tcp(tcps_base[cam_sn][ts]['tcp'])
-                tcp_action = convert_tcp(tcps[cam_sn][next_ts]['tcp'])
-                tcp_base_action = convert_tcp(tcps_base[cam_sn][next_ts]['tcp'])
+                try:
+                    tcp = convert_tcp(tcps[cam_sn][ts]['tcp'])
+                    tcp_base = convert_tcp(tcps_base[cam_sn][ts]['tcp'])
+                    tcp_action = convert_tcp(tcps[cam_sn][next_ts]['tcp'])
+                    tcp_base_action = convert_tcp(tcps_base[cam_sn][next_ts]['tcp'])
+                except Exception:
+                    return None
                 try:
                     joint, joint_vel = unify_joint(joints[cam_sn][ts])
                 except Exception:
@@ -374,8 +377,11 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                     ft_zeroed_base = np.array(fts_base[cam_sn][ts]['zeroed']).astype(np.float32)
                 except Exception:
                     ft_zeroed_base = np.zeros(6).astype(np.float32)
-                gripper_width = grippers[cam_sn][ts]['gripper_info'][0]
-                gripper_next_width = grippers[cam_sn][next_ts]['gripper_info'][0]
+                try:
+                    gripper_width = grippers[cam_sn][ts]['gripper_info'][0]
+                    gripper_next_width = grippers[cam_sn][next_ts]['gripper_info'][0]
+                except Exception:
+                    return None
                 if np.abs(gripper_width - gripper_next_width) >= self.gripper_threshold:
                     if gripper_next_width < gripper_width:
                         gripper_action = 0
