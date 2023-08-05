@@ -9,7 +9,7 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_hub as hub
 
-from utils import transform_timestamp_key, unify_tcp, unify_joint, fetch_tactile
+from utils import transform_timestamp_key, convert_tcp, unify_joint, fetch_tactile
 
 
 """
@@ -29,7 +29,9 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder-large/5")
+        # self._embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder-large/5")
+        # To avoid setting up proxies:
+        self._embed = hub.load("https://storage.googleapis.com/tfhub-modules/google/universal-sentence-encoder-large/5.tar.gz")
         with open('task_description.json', 'r') as f:
            self._task_description = json.load(f)
         self.gripper_threshold = 3
@@ -211,20 +213,20 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                 for camera in sorted(os.listdir(os.path.join(path, conf, scene))):
                     if 'cam_' not in camera:
                         continue
-                    paths.append((
-                        scene,
-                        camera,
-                        os.path.join(path, conf, scene),
-                        os.path.join(path, conf, scene, camera),
-                        None if depth_path is None or not os.path.exists(os.path.join(depth_path, conf, scene, camera)) else os.path.join(depth_path, conf, scene, camera),
-                        None if joint_path is None or not os.path.exists(os.path.join(joint_path, conf, scene)) else os.path.join(joint_path, conf, scene)
-                    ))
+                    paths.append(
+                        scene + "[SPLIT]" +
+                        camera + "[SPLIT]" + 
+                        os.path.join(path, conf, scene)  + "[SPLIT]" + 
+                        os.path.join(path, conf, scene, camera)  + "[SPLIT]" + 
+                        ("" if depth_path is None or not os.path.exists(os.path.join(depth_path, conf, scene, camera)) else os.path.join(depth_path, conf, scene, camera)) + "[SPLIT]" + 
+                        ("" if joint_path is None or not os.path.exists(os.path.join(joint_path, conf, scene)) else os.path.join(joint_path, conf, scene))
+                    )
         return paths
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path=self._generate_paths(path='RH20T', depth_path='RH20T_depth', joint_path='RH20T')),
+            'train': self._generate_examples(path=self._generate_paths(path='data/RH20T', depth_path='data/RH20T_depth', joint_path='data/RH20T')),
         }
 
     def _generate_examples(self, path) -> Iterator[Tuple[str, Any]]:
@@ -232,7 +234,7 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
 
         def _parse_example(episode_path):
             # load raw data --> this should change for your dataset
-            scene_name, camera_name, base_path, color_path, depth_path, joint_path = episode_path
+            scene_name, camera_name, base_path, color_path, depth_path, joint_path = episode_path.split("[SPLIT]")
             try:
                 cam_sn = camera_name[4:]
                 task_id = int(scene_name[5:9])
@@ -276,11 +278,7 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                     break
             cap.release()
             # 2. load depth data (if any)
-            with_depth = (depth_path is not None)
-            if with_depth:
-                if not os.path.exists(os.path.join(depth_path, 'depth.mp4')):
-                    with_depth = False
-            if with_depth:
+            if os.path.exists(os.path.join(depth_path, 'depth.mp4')):
                 cap = cv2.VideoCapture(os.path.join(depth_path, 'depth.mp4'))
                 depths = {}
                 cnt = 0
@@ -321,10 +319,10 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
             else:
                 tactiles = None
             # 4. load joint data (if any)
-            if joint_path is None or not os.path.exists(os.path.join(joint_path, 'transformed', 'joint.npy')):
-                joints = None
-            else:
+            if os.path.exists(os.path.join(joint_path, 'transformed', 'joint.npy')):
                 joints = np.load(os.path.join(joint_path, 'transformed', 'joint.npy'), allow_pickle=True).item()
+            else:
+                joints = None
             # 5. language instruction
             language_instruction = self._task_description[scene_name[:9]]["task_description_english"]
             # compute Kona language embedding
@@ -343,10 +341,10 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                     depth = np.expand_dims(depths[ts], -1).astype(np.uint16)
                 except Exception:
                     depth = np.zeros((height, width, 1), dtype=np.uint16)
-                tcp = unify_tcp(tcps[cam_sn][ts]['tcp'], cfg_id)
-                tcp_base = unify_tcp(tcps_base[cam_sn][ts]['tcp'], cfg_id)
-                tcp_action = unify_tcp(tcps[cam_sn][next_ts]['tcp'], cfg_id)
-                tcp_base_action = unify_tcp(tcps_base[cam_sn][next_ts]['tcp'], cfg_id)
+                tcp = convert_tcp(tcps[cam_sn][ts]['tcp'])
+                tcp_base = convert_tcp(tcps_base[cam_sn][ts]['tcp'])
+                tcp_action = convert_tcp(tcps[cam_sn][next_ts]['tcp'])
+                tcp_base_action = convert_tcp(tcps_base[cam_sn][next_ts]['tcp'])
                 try:
                     joint, joint_vel = unify_joint(joints[cam_sn][ts])
                 except Exception:

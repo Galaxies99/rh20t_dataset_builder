@@ -45,22 +45,9 @@ def transform_timestamp_key(p):
     return res
 
 
-def unify_tcp(tcp_pose, cfg):
-    """ Unify tcp interface. """
-    if cfg == 1 or cfg == 2:
-        """ Flexiv: xyz + quat """
-        return np.concatenate((tcp_pose[:3], quat2euler(tcp_pose[3:]))).astype(np.float32)
-    elif cfg == 3 or cfg == 4:
-        """ UR5: xyz + rotvec """
-        return np.concatenate((tcp_pose[:3], rotvec2euler(tcp_pose[3:]))).astype(np.float32)
-    elif cfg == 5:
-        """ Franka: xyz + rpy (already transformed) """
-        return np.array(tcp_pose).astype(np.float32)
-    elif cfg == 6 or cfg == 7:
-        """ Kuka: xyz + rpy """
-        return np.array(tcp_pose).astype(np.float32)
-    else:
-        raise AttributeError('Invalid cfg.')
+def convert_tcp(tcp_pose):
+    """ Convert tcp into xyzrpy. """
+    return np.concatenate((tcp_pose[:3], quat2euler(tcp_pose[3:]))).astype(np.float32)
 
 
 def unify_joint(joint_info, cfg):
