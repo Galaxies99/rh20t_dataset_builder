@@ -71,4 +71,4 @@ def unify_joint(joint_info, cfg):
 def fetch_tactile(tactiles, timestamp):
     """ Fetch the most relevent tactile information from the record. """
     idx = np.argmin(np.abs(tactiles[:, 97] - timestamp))
-    return np.array(tactiles[idx, :96]).astype(np.int64)
+    return np.array(tactiles[idx, :96]).astype(np.int32)

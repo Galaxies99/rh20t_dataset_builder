@@ -43,13 +43,13 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                 'steps': tfds.features.Dataset({
                     'observation': tfds.features.FeaturesDict({
                         'image': tfds.features.Image(
-                            shape=(720, 1280, 3),
+                            shape=(None, None, 3),   # (720, 1280) for original, (360, 640) for resized
                             dtype=np.uint8,
                             encoding_format='jpeg',
                             doc='Camera RGB observation.'
                         ),
                         'depth': tfds.features.Image(
-                            shape=(720, 1280, 1),
+                            shape=(None, None, 1),   # (720, 1280) for original, (360, 640) for resized
                             dtype=np.uint16,
                             encoding_format='png',
                             doc='Camera depth observation (in mm).'
@@ -111,7 +111,7 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                         ),
                         'tactile': tfds.features.Tensor(
                             shape=(96,),
-                            dtype=np.int64,
+                            dtype=np.int32,
                             doc='Tactile information (only available in RH20T cfg7).'
                         ),
                         'timestamp': tfds.features.Scalar(
@@ -173,19 +173,19 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                         doc='Camera serial number.'
                     ),
                     'task_id': tfds.features.Scalar(
-                        dtype=np.int64,
+                        dtype=np.int32,
                         doc='Task ID.'
                     ),
                     'user_id': tfds.features.Scalar(
-                        dtype=np.int64,
+                        dtype=np.int32,
                         doc='User ID.'
                     ),
                     'scene_id': tfds.features.Scalar(
-                        dtype=np.int64,
+                        dtype=np.int32,
                         doc='Scene ID.'
                     ),
                     'cfg_id': tfds.features.Scalar(
-                        dtype=np.int64,
+                        dtype=np.int32,
                         doc='Configuration ID.'
                     ),
                     'audio': tfds.features.Audio(
@@ -197,7 +197,7 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                         doc='Finish timestamp.'
                     ),
                     'rating': tfds.features.Scalar(
-                        dtype=np.int64,
+                        dtype=np.int32,
                         doc='User rating (0: robot entered the emergency state; 1: task failed; 2-9: user evaluation of manipulation quality).'
                     )
                 }),
@@ -213,6 +213,20 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                 for camera in sorted(os.listdir(os.path.join(path, conf, scene))):
                     if 'cam_' not in camera:
                         continue
+                    try:
+                        task_id = int(scene[5:9])
+                        user_id = int(scene[15:19])
+                        scene_id = int(scene[26:30])
+                        cfg_id = int(scene[35:39])
+                    except Exception:
+                        continue
+                    if not os.path.exists(os.path.join(path, conf, scene, camera, 'color.mp4')) or \
+                       not os.path.exists(os.path.join(path, conf, scene, camera, 'timestamps.npy')) or \
+                       not os.path.exists(os.path.join(path, conf, scene, 'transformed')) or \
+                       not os.path.exists(os.path.join(path, conf, scene, 'transformed', 'tcp.npy')) or \
+                       not os.path.exists(os.path.join(path, conf, scene, 'transformed', 'gripper.npy')) or \
+                       not os.path.exists(os.path.join(path, conf, scene, 'transformed', 'force_torque.npy')):
+                       continue
                     paths.append(
                         scene + "[SPLIT]" +
                         camera + "[SPLIT]" + 
@@ -235,26 +249,11 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
         def _parse_example(episode_path):
             # load raw data --> this should change for your dataset
             scene_name, camera_name, base_path, color_path, depth_path, joint_path = episode_path.split("[SPLIT]")
-            try:
-                cam_sn = camera_name[4:]
-                task_id = int(scene_name[5:9])
-                user_id = int(scene_name[15:19])
-                scene_id = int(scene_name[26:30])
-                cfg_id = int(scene_name[35:39])
-            except Exception:
-                return None
-            # Basic integrity check
-            if not os.path.exists(color_path) or \
-               not os.path.exists(os.path.join(color_path, 'color.mp4')) or \
-               not os.path.exists(os.path.join(color_path, 'timestamps.npy')):
-                return None
-            if not os.path.exists(base_path) or \
-               not os.path.exists(os.path.join(base_path, 'metadata.json')) or \
-               not os.path.exists(os.path.join(base_path, 'transformed')) or \
-               not os.path.exists(os.path.join(base_path, 'transformed', 'tcp.npy')) or \
-               not os.path.exists(os.path.join(base_path, 'transformed', 'gripper.npy')) or \
-               not os.path.exists(os.path.join(base_path, 'transformed', 'force_torque.npy')):
-                return None
+            cam_sn = camera_name[4:]
+            task_id = int(scene_name[5:9])
+            user_id = int(scene_name[15:19])
+            scene_id = int(scene_name[26:30])
+            cfg_id = int(scene_name[35:39])
             # 0. load metadata and audio
             with open(os.path.join(base_path, 'metadata.json'), 'r') as f:
                 meta = json.load(f)
@@ -393,7 +392,7 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
                 try:
                     tactile = fetch_tactile(tactiles, ts)
                 except Exception:
-                    tactile = np.zeros(96).astype(np.int64)
+                    tactile = np.zeros(96).astype(np.int32)
                 episode.append({
                     'observation': {
                         'image': colors[ts],
@@ -449,17 +448,17 @@ class rh20t(tfds.core.GeneratorBasedBuilder):
             # if you want to skip an example for whatever reason, simply return None
             return episode_path, sample
 
-        # create list of all examples
-        episode_paths = path
-
         # for smallish datasets, use single-thread parsing
-        for sample in episode_paths:
-            yield _parse_example(sample)
+        # for episode_path in path:
+        #     sample = _parse_example(episode_path)
+        #     if sample is not None:
+        #         yield sample
 
         # for large datasets use beam to parallelize data parsing (this will have initialization overhead)
-        # beam = tfds.core.lazy_imports.apache_beam
-        # return (
-        #         beam.Create(episode_paths)
-        #         | beam.Map(_parse_example)
-        # )
+        beam = tfds.core.lazy_imports.apache_beam
+        return (
+                beam.Create(path)
+                | beam.Map(_parse_example)
+                | beam.Filter(lambda x: x is not None)
+        )
 
