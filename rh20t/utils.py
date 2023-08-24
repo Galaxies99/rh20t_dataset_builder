@@ -63,7 +63,7 @@ def unify_joint(joint_info, cfg):
         return np.array(joint_info[:7]).astype(np.float32), np.array(joint_info[7:14]).astype(np.float32)
     elif cfg == 6 or cfg == 7:
         """ Kuka: 7 joints, without vel """
-        return np.array(joint_info[:7]).astype(np.float32), np.zers(7).astype(np.float32)
+        return np.array(joint_info[:7]).astype(np.float32), np.zeros(7).astype(np.float32)
     else:
         raise AttributeError('Invalid cfg.')
 
